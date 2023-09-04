@@ -92,6 +92,7 @@ void setup() {
   debugln("Setting up...");
   pinMode(pedal, INPUT); //Configure pedal pin as input, add PULLUP or PULLDOWN as failsafe to pull towards no fuel (TODO check on truck)
   s.attach(sPin);    //Attach the servo to an output pin, apparently no need to manage the mode of the pin first
+  s.write(sPos); //Send servo to initial position (zero)
 }
 
 
