@@ -36,7 +36,7 @@ long sPosMax = 9999;     //The position of the servo in degrees when fuel is max
 long sPosCur = 0;       // Holds current position of the servo, initialize to 0
 long fuelPosMin = NOT_MEASURED;  //The position of the fuel pedal after analogRead (foot off the pedal)
 long fuelPosMax = NOT_MEASURED;  //The position of the fuel pedal after analogRead (foot off the pedal)
-byte menuSelection; //Var used to store the input from user
+char menuSelection; //Var used to store the input from user
 
 /***********************************************
 
@@ -109,12 +109,22 @@ void loop() {
 
   debugln("");
   debugln("");
-  debugln("1. Read minimum pedal voltage (foot off)");
-  debugln("2. Read maximum pedal voltage (foot to the floor)");
+  debugln("1. Read and set minimum pedal voltage (foot off)");
+  debugln("2. Read and set maximum pedal voltage (foot to the floor)");
   debugln("3. Increase servo angle (more fuel)");
   debugln("4. Decrease servo angle (less fuel)");
   debugln("5. Set servo value as min value (idle)");
   debugln("6. Set servo value as max value (full fuel)");
+  debugln("7. Output final values");
+  debugln("---------------------------------------------------------------------------");
+  debugln("");
+  debugln("");
+  debugln("");
+  debugln("");
+
+
+  //Wait for input
+  while(!Serial.available()) {}
 
   // send data only when you receive data:
   if (Serial.available() > 0)
@@ -122,9 +132,54 @@ void loop() {
     // read the incoming byte:
     menuSelection = Serial.read();
 
-    // say what you got:
-    Serial.print("I received: ");
-    Serial.println(menuSelection, DEC);
-  }
+    // make sure what we got is valid (1 through 6)
+    switch (menuSelection)
+    {
+        case '1': //Read and set minimum fuel pedal voltage (foot off)
+        fuelPosMin = analogRead(pedal); 
+        debug("10-bit value set to: ");
+        debug(fuelPosMin);
+        debugln("/1024");
+        break;
 
+        case '2':
+        fuelPosMax = analogRead(pedal); 
+        debug("10-bit value set to: ");
+        debug(fuelPosMax);
+        debugln("/1024");
+        break;
+
+        case '3':
+        sPosCur++;
+        s.write(sPosCur);
+        break;
+
+        case '4':
+        sPosCur--;
+        s.write(sPosCur);
+        break;
+
+        case '5':
+        sPosMin = sPosCur;
+        debug("Minimum servo value set to: ");
+        debug(sPosMin);
+        debugln(" degrees.");
+        break;
+
+        case '6':
+        sPosMax = sPosCur;
+        debug("Maximum servo value set to: ");
+        debug(sPosMax);
+        debugln(" degrees.");
+        break;
+
+        case '7':
+        debugln("FINAL VALUES");
+        debug("sPosMin = ");
+        debugln(sPosMin);
+
+        while(true){} //Freeze program there
+        break;
+    }
+  }
 }
