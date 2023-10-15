@@ -1,0 +1,177 @@
+OUTPUT OF STOCK HALL SENSORS
+
+bits: (1)(2)(3)(4)
+inputs:(1)(2)(3)(4)
+
+Wiring: 	1: Purple/Yellow
+		2: Brown/White
+		3: White
+		4: Orange/White
+Orange: +5V
+Other purple/yellow = ground (spliced)
+
+2WD to 4LO
+
+Start?
+1010
+1000
+1000
+1100 4LO
+
+
+
+4LO to 4HI
+1000
+1010
+
+
+4HI to 2WD
+0011
+0010
+0010
+
+
+
+2WD to 4HI
+1010
+
+4HI to 4LO
+1000    TRANSITION
+1100
+
+
+OVERALL STATES:
+0010 2WD
+1010 4HI
+1100 4LO
+
+1000 TRANSITION
+
+
+
+
+SECOND TRY OF FIGURNG THIS OUT-------------------------------------------------------
+1100 4LO max
+1101 4LO
+1001 TRANSITION
+1000 TRANSITION
+1001 TRANSITION
+1011 TRANSITION
+1010 IMPOSSIBLE
+1011 TRANSITION
+1010 IMPOSSIBLE
+1011 TRANSITION
+1111 2WD
+1110 2WD max
+
+
+1110 2WD MAX
+1111
+1011
+1010
+1011
+1010 4HI <----- THIS IS THE ONE THAT WILL MAKE THE PLUG FIT
+1011
+1001
+1000
+1001
+1101 4LO
+1100 4LO max
+
+
+
+--------------------- WITH WEMOS at 3.3V ref from board, 50ms delay------------------
+1110 - 4LO relaxed
+1111
+1011
+1010
+1011
+1010
+1011
+1010
+1011
+1111
+1110
+1111
+1110 - 2WD relaxed
+
+
+1110 - 2WD relaxed
+1111
+1011
+1010
+1011
+1010 -----
+1011
+1010
+1011
+1111
+1110
+1111
+1110 - 4LO relaxed
+
+--------------------- WITH WEMOS at 3.3V ref from board, 100ms delay------------------
+1111 - max trvel, must stop here
+1110 - 4LO relaxed
+1011
+1010
+1011
+1010
+1011
+1010
+1110 - 2wd relaxed
+1111 - actual max, must stop here
+
+
+
+--------------------- WITH UNO at 5v ref from board, 100ms delay------------------
+1110 - 4LO
+1011
+1010
+1011
+1010
+1011
+1010
+1111
+1110 4HI
+
+
+--------------------- WITH UNO at 5v ref from board, 10ms delay------------------
+1110 - 2WD
+1111
+1011
+1010
+1011
+1010------
+1011
+1010
+1011
+1111
+1110
+1111
+1110
+
+
+
+
+
+NOW WITH MKR1010 WIFI
+
+0111 --> 2WD
+0110
+0111
+0011
+0010
+0011
+1010 ----
+1011
+1001
+1000
+1001
+1101 --> 4LO!
+1100
+1101 --> 4LO?
+
+
+
+

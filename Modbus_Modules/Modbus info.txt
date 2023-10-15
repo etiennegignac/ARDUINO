@@ -1,0 +1,46 @@
+MODBUS INFO
+
+
+Modbus slave IDs
+
+1: Air suspension control
+
+
+
+REFRESH: register types
+
+Coil		 Read/write	Single bit outputs
+Discrete input	 Read only	Single bit inputs
+Input register	 Read only	16-bit input registers (Function code 4 to read, unsigned int 16 bits
+Holding register Read/write	16-bit output registers
+
+
+Coils
+1: FL inflate button pressed
+2: FL deflate button pressed
+3: FR inflate button pressed
+4: FR deflate button pressed
+5: RR inflate button pressed
+6: RR deflate button pressed
+7: RL inflate button pressed
+8: RL deflate button pressed
+
+Input registers address/index: 
+0: Air tank pressure (high word)
+1: Air tank pressure (low word) - NOT USED
+2: FL bag pressure (high word)
+3: FL bag pressure (low word)
+4: FR bag pressure (high word)
+5: FR bag pressure (low word)
+6: RR bag pressure (high word)
+7: RR bag pressure (low word)
+8: RL bag pressure (high word)
+9:RL bag pressure (low word)
+10: Truck pitch (high word)
+11: Truck pitch (low word)
+12: Truck roll (high word)
+13: Truck roll (low word)
+
+Holding registers address/index
+0: Current suspension mode (0 = slam, 1 = Drive, 2 = Max, 3 = Custom)
+1: Requested suspension mode (0 = slam, 1 = Drive, 2 = Max, 3 = Custom)
