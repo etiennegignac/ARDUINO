@@ -2,8 +2,8 @@
 
 #include <SPI.h>
 #include <WiFiNINA.h>
-#include <ArduinoOTA.h>
-#include <MQTT.h>
+#include <ArduinoOTA.h> //OTA
+#include <ArduinoMqttClient.h> //MQTT
 
 #define LOG 1  //All the verbose in the serial console
 #define DEBUG_REQUESTED_STATE_PINS 0
@@ -12,14 +12,14 @@
 #define SKIP_WIFI 0
 
 // Little debug trick to strip the code of debug statement at compile time
-#if LOG == 1
+//#if LOG == 1
 #define lms(x) Serial.print(x)
 #define lmsln(x) Serial.println(x)
 
-#else
-#define lms(x)
-#define lmsln(x)
-#endif
+//#else
+//#define lms(x)
+//#define lmsln(x)
+//#endif
 
 //Pinout (FOR ARDUINO MKR1010 WIFI)
 #define ENCODER_1 6  //Encoder bit 1 / connector pin 5 (purple/yellow)
@@ -69,8 +69,8 @@ char pass[] = SECRET_PASS;  // network password
 int status = WL_IDLE_STATUS;
 
 //MQTT
-WiFiClient net;
-MQTTClient mqtt;
+WiFiClient wiFiClient;
+MqttClient mqttClient(wiFiClient);
 
 
 
@@ -81,15 +81,20 @@ MQTTClient mqtt;
 
  *****************************************************************/
 void setup() {
+delay(5000);
 
-#if log == 1
+#if LOG == 1
+
   //Initialize serial:
   Serial.begin(115200);
-  lmsln("Debugging to serial enabled!")
-    lmsln("Transfer case controller on MKR1010 WIFI");
-  lmsln("Created for the Overland Fummins")
-    lmsln("By Etienne Gignac-Bouchard");
-  lmsln("October 2023")
+  
+  while(!Serial); //Wait for serial port to be available
+
+  lmsln("Debugging to serial enabled!");
+  lmsln("Transfer case controller on MKR1010 WIFI");
+  lmsln("Created for the Overland Fummins");
+  lmsln("By Etienne Gignac-Bouchard");
+  lmsln("October 2023");
 #endif
 
 #if SKIP_WIFI == 0            //Do we skip the wifi connection?
@@ -107,36 +112,39 @@ void setup() {
   }
 
   if (status == WL_CONNECTED) {  //If we are connected to wifi
-
+    lmsln("SUCCESS!");
     // you're connected now, so print out the status:
     printWifiStatus();
 
     // start the WiFi OTA library with internal (flash) based storage
-    ArduinoOTA.begin(WiFi.localIP(), "Arduino", "password", InternalStorage);
+    //ArduinoOTA.begin(WiFi.localIP(), "Arduino", "password", InternalStorage);
 
     //Connect to MQTT broker
-    mqtt.begin(MQTT_BROKER, net);
-    mqtt.onMessage(messageReceived);  //Registers callsback function on MQTT message received
-
     connectingTries = 0;  //Reset number of tries
 
-    while (!mqtt.connect("Transfer Case Controller") && connectingTries != 4) {
+    //Set our MQTT client ID
+    mqttClient.setId("T-Case_Controller");
+
+    while (!mqttClient.connect(MQTT_BROKER) && connectingTries != 4) {
       lms("Attempting to connect to MQTT broker ");
       lmsln(MQTT_BROKER);
-      delay(5000);  //Give a 5sec delay before the next try
+      connectingTries++; //Increase our number of tries
+      delay(1000);  //Give a 5sec delay before the next try
     }
 
-    if (mqtt.connected()) {
-      lmsln("Connection to MQTT broker successful!");
+    if (mqttClient.connected()) {
+      lms("Connection to MQTT broker (");
+      lms(MQTT_BROKER);
+      lmsln(") successful!");
       //Since we are now connected to our MQTT broker, we can subscribe to topics
       //client.subscribe("/hello");
 
       //Publish status
-      MQTT_Info("Transfer Case Controller ONLINE!");
-      MQTT_Info("SSID: " + String(WiFi.SSID()));
-      MQTT_Info("IP: " + WiFi.localIP());
-      MQTT_Info("Signal strength (RSSI): " + WiFi.RSSI());
+      String LocalIP = String() + WiFi.localIP()[0] + "." + WiFi.localIP()[1] + "." + WiFi.localIP()[2] + "." + WiFi.localIP()[3];
 
+      MQTT_Publish("/Overland_Fummins/T-Case_Controller/NetworkStatus", "Online");
+      MQTT_Publish("/Overland_Fummins/T-Case_Controller/IP", LocalIP);
+      MQTT_Publish("/Overland_Fummins/T-Case_Controller/SignalStrength", String(WiFi.RSSI()));
 
     } else
       lmsln("Can't connect to MQTT broker...aborting");
@@ -160,17 +168,18 @@ void setup() {
 
   //Start calibrating to make sure we get right values and positions
   lmsln("Calibrating...");
-  MQTT_Info("Calibrating...");
+  MQTT_Publish("/Overland_Fummins/T-Case_Controller/Action", "Calibrating...");
   lmsln("Going to 2WD position.");
-  MQTT_Info("Going to 2WD position.");
+  MQTT_Publish("/Overland_Fummins/T-Case_Controller/Action", "Going to 2WD position.");
 
   //Start our recursive function
   find2WD();
 
   lmsln("Calibration finished.  Current position is 2WD.");
-  MQTT_Info("Calibration finished.  Current position is 2WD.");
+  MQTT_Publish("/Overland_Fummins/T-Case_Controller/Action", "Calibration finished.  Current position is 2WD.");
   lmsln("-----------------  Setup complete  -----------------");
-  MQTT_Info("-----------------  Setup complete  -----------------");
+  MQTT_Publish("/Overland_Fummins/T-Case_Controller/Action", "-----------------  Setup complete  -----------------");
+  //*/
 }
 
 
@@ -190,6 +199,24 @@ void messageReceived(String &topic, String &payload) {
   // or push to a queue and handle it in the loop after calling `client.loop()`.
 }
 
+/******************************************************************
+
+   Function: MQTT_Publish()
+
+   Description: Publishes message to MQTT topic
+
+ *****************************************************************/
+void MQTT_Publish(String topic, String payload) {
+
+  if (mqttClient.connected())  //Make sure we are connected to the MQTT broker
+  {
+    //Log under T-Case-Controller topic
+    mqttClient.beginMessage(topic);
+    mqttClient.print(payload);
+    mqttClient.endMessage();
+  }
+}
+
 
 /******************************************************************
 
@@ -201,13 +228,17 @@ void messageReceived(String &topic, String &payload) {
  *****************************************************************/
 void MQTT_Info(String payload) {
 
-  if (mqtt.connected())  //Make sure we are connected to the MQTT broker
+  if (mqttClient.connected())  //Make sure we are connected to the MQTT broker
   {
     //Log under T-Case-Controller topic
-    mqtt.publish("/T-Case-Controller/Log/Info", payload);
+    mqttClient.beginMessage("/T-Case-Controller/Log/Info");
+    mqttClient.print(payload);
+    mqttClient.endMessage();
 
     //and generic log topic
-    mqtt.publish("/Log/Info", payload);
+    mqttClient.beginMessage("/Log/Info");
+    mqttClient.print(payload);
+    mqttClient.endMessage();
   }
 }
 
@@ -221,13 +252,17 @@ void MQTT_Info(String payload) {
  *****************************************************************/
 void MQTT_Error(String payload) {
 
-  if (mqtt.connected())  //Make sure we are connected to the MQTT broker
+  if (mqttClient.connected())  //Make sure we are connected to the MQTT broker
   {
     //Log under T-Case-Controller error topic
-    mqtt.publish("/T-Case-Controller/Log/Error", payload);
+    mqttClient.beginMessage("/T-Case-Controller/Log/Error");
+    mqttClient.print(payload);
+    mqttClient.endMessage();
 
     //and generic log topic
-    mqtt.publish("/Error", payload);
+    mqttClient.beginMessage("/Error");
+    mqttClient.print(payload);
+    mqttClient.endMessage();
   }
 }
 
@@ -243,13 +278,17 @@ void MQTT_Error(String payload) {
  *****************************************************************/
 void MQTT_Alarm(String payload) {
 
-  if (mqtt.connected())  //Make sure we are connected to the MQTT broker
+  if (mqttClient.connected())  //Make sure we are connected to the MQTT broker
   {
     //Log under T-Case-Controller error topic
-    mqtt.publish("/T-Case-Controller/Log/Alarm", payload);
+    mqttClient.beginMessage("/T-Case-Controller/Log/Alarm");
+    mqttClient.print(payload);
+    mqttClient.endMessage();
 
     //and generic log topic
-    mqtt.publish("/Alarm", payload);
+    mqttClient.beginMessage("/Alarm");
+    mqttClient.print(payload);
+    mqttClient.endMessage();
   }
 }
 
@@ -283,6 +322,7 @@ int getRawEncoderValue() {
   lmsln("");
 
   */
+  lms("Encoder: ");
   lmsln(rawEncoderValue);
 
 #endif
@@ -345,6 +385,21 @@ int getRequestedState() {
   lmsln(requestedState);
 #endif
 
+  if (mqttClient.connected())  //Make sure we are connected to the MQTT broker
+  {
+    if(requestedState == _2WD)
+      MQTT_Publish("/Overland_Fummins/T-Case_Controller/Requested_State", "2WD");
+
+    else if (requestedState == _4HI)
+      MQTT_Publish("/Overland_Fummins/T-Case_Controller/Requested_State", "4HI");
+
+    else if (requestedState == _4LOW)
+      MQTT_Publish("/Overland_Fummins/T-Case_Controller/Requested_State", "4LO");
+
+    else
+      MQTT_Publish("/Overland_Fummins/T-Case_Controller/Requested_State", "IMPOSSIBLE");
+  }
+
   return requestedState;  // 0 = TRANSITION, 1 = 2WD, 2 = 4HI, 3 = 4LO, 999 = IMPOSSIBLE
 }
 
@@ -360,8 +415,8 @@ int getRequestedState() {
 
  *****************************************************************/
 void find2WD() {
-  lms("Looking for 2WD position going negative...");
-  MQTT_Info("Looking for 2WD position going negative...");
+  //lms("Looking for 2WD position going negative...");
+  //MQTT_Info("Looking for 2WD position going negative...");
 
   //Turn motor on going negative
   digitalWrite(RELAY_NEGATIVE, LOW);
@@ -371,8 +426,8 @@ void find2WD() {
 
   //See what we have
   if (getRawEncoderValue() == ENCODER_POS_2WD) {  //We are the right position after small delay, found it.
-    lmsln("Found 2WD encoder position immediately.");
-    MQTT_Info("Found 2WD encoder position immediately.");
+    //lmsln("Found 2WD encoder position immediately.");
+    //MQTT_Info("Found 2WD encoder position immediately.");
     digitalWrite(RELAY_NEGATIVE, HIGH);  //Stop motor
   }
 
@@ -389,7 +444,7 @@ void find2WD() {
     }
 
     //Now we found a ENCODER_POS_2WD position, but is it the leftmost one?
-    MQTT_Info("Found 2WD encoder position after searching.");
+    //MQTT_Info("Found 2WD encoder position after searching.");
     digitalWrite(RELAY_NEGATIVE, HIGH);  //Stop motor
     delay(100);                          //Wait a bit for things to settle
     find2WD();                           //Call this function recursively to see if we get another ENCODER_POS_2WD left of this one
@@ -398,6 +453,7 @@ void find2WD() {
   //We are at the leftmost ENCODER_POS_2WD position
 
   //Update current state
+  MQTT_Publish("/Overland_Fummins/T-Case_Controller/Current_State", "2WD");
   currentState = _2WD;
 }
 
@@ -413,8 +469,8 @@ void find2WD() {
 
  *****************************************************************/
 void find4LO() {
-  lms("Looking for 4LO going positive...");
-  MQTT_Info("Looking for 4LO going negative");
+  //lms("Looking for 4LO going positive...");
+  //MQTT_Info("Looking for 4LO going negative");
 
   //Turn motor on going positive
   digitalWrite(RELAY_POSITIVE, LOW);
@@ -426,7 +482,7 @@ void find4LO() {
   if (getRawEncoderValue() == ENCODER_POS_4LO)  //Looks like we were at the rightmost position already
   {
     //lmsln("Found rightmost encoder position.");
-    MQTT_Info("Found 4LO position immediately.");
+    //MQTT_Info("Found 4LO position immediately.");
     digitalWrite(RELAY_POSITIVE, HIGH);
   }
 
@@ -437,7 +493,7 @@ void find4LO() {
       delay(10);
     }
 
-    MQTT_Info("Found 4LO position after searching");
+    //MQTT_Info("Found 4LO position after searching");
     //Now we found a ENCODER_POS_4LO position, but is it the rightmost one?
     digitalWrite(RELAY_POSITIVE, HIGH);  //Stop motor
     delay(100);
@@ -447,13 +503,14 @@ void find4LO() {
   //We are at the rightmost ENCODER_POS_4LO position
 
   //Update current state
+  MQTT_Publish("/Overland_Fummins/T-Case_Controller/Current_State", "4LO");
   currentState = _4LOW;
 }
 
 
 void goto4HI() {
-  lmsln("Going to 4HI");
-  MQTT_Info("Going to 4HI");
+  //lmsln("Going to 4HI");
+  //MQTT_Info("Going to 4HI");
 
   // If we are at 2WD, we need to go positive
   if (currentState == _2WD) {
@@ -469,12 +526,13 @@ void goto4HI() {
       delay(10);
     }
 
-    MQTT_Info("Found 4HI position after searching.");
+    //MQTT_Info("Found 4HI position after searching.");
     //Now we found a ENCODER_POS_4HI position, supposed to be the only one?
     digitalWrite(RELAY_POSITIVE, HIGH);  //Stop motor
     delay(100);
 
     //Update current state
+    MQTT_Publish("/Overland_Fummins/T-Case_Controller/Current_State", "4HI");
     currentState = _4HI;
   }
 
@@ -492,12 +550,13 @@ void goto4HI() {
       delay(10);
     }
 
-    MQTT_Info("Found 4HI position after searching");
+    //MQTT_Info("Found 4HI position after searching");
     //Now we found a ENCODER_POS_4HI position, supposed to be the only one?
     digitalWrite(RELAY_NEGATIVE, HIGH);  //Stop motor
     delay(100);
 
     //Update current state
+    MQTT_Publish("/Overland_Fummins/T-Case_Controller/Current_State", "4HI");
     currentState = _4HI;
   }
 }
