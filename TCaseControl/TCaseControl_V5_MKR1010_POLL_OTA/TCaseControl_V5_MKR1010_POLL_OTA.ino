@@ -2,14 +2,16 @@
 
 #include <SPI.h>
 #include <WiFiNINA.h>
+#include <utility/wifi_drv.h> //For MKR1010WIFI RGB LED 
 #include <ArduinoOTA.h> //OTA
 #include <ArduinoMqttClient.h> //MQTT
 
-#define LOG 1  //All the verbose in the serial console
+#define LOG 0  //All the verbose in the serial console
 #define DEBUG_REQUESTED_STATE_PINS 0
 #define DEBUG_CURRENT_STATE_PINS 0
 #define DEBUG_RAW_ENCODER 0
 #define SKIP_WIFI 0
+#define SKIP_MQTT 0
 
 // Little debug trick to strip the code of debug statement at compile time
 //#if LOG == 1
@@ -22,7 +24,7 @@
 //#endif
 
 //Pinout (FOR ARDUINO MKR1010 WIFI)
-#define ENCODER_1 6  //Encoder bit 1 / connector pin 5 (purple/yellow)
+#define ENCODER_1 5  //Encoder bit 1 / connector pin 5 (purple/yellow)
 #define ENCODER_2 4  //Encoder bit 2 / connector pin 3 (brown/white)
 #define ENCODER_3 3  //Encoder bit 3 / connector pin 6 (white)
 #define ENCODER_4 2  //Encoder bit 4 / connector pin 1 (orange/white)
@@ -51,13 +53,15 @@
 
 //Global variables
 int currentState = IMPOSSIBLE;  //Based on transfer case motor position
-int requestedState = _2WD;      //Based on dash switch position, initialize as 2WD for calibration
+int requestedState = IMPOSSIBLE;      //Based on dash switch position
+int initialRequestedState = IMPOSSIBLE;         //Dash switch state when booting up
 
 int rawEncoderValue = 0;  //Used to store bit vlues as int representation (1011, 1111, etc)
 int pastEncoderValue = 0;
 
 int directionOfMovement = STOPPED;  //Motor direction of movement
 bool isMotorMoving = false;         //true when motor is moving
+bool justBooted = true;            //Set to true when we just booted and haven't moved the dash switch yet
 
 int switchPosition = 0;  //Variable where we store the value of the analog to digital converter on ADC pin from switch
 
@@ -68,10 +72,11 @@ char ssid[] = SECRET_SSID;  //network SSID
 char pass[] = SECRET_PASS;  // network password
 int status = WL_IDLE_STATUS;
 
+#if SKIP_MQTT == 0
 //MQTT
 WiFiClient wiFiClient;
 MqttClient mqttClient(wiFiClient);
-
+#endif
 
 
 
@@ -81,7 +86,17 @@ MqttClient mqttClient(wiFiClient);
 
  *****************************************************************/
 void setup() {
-delay(5000);
+//delay(5000);
+
+//For MKR1010WIFI RGB LED
+WiFiDrv::pinMode(25, OUTPUT); //define GREEN LED
+WiFiDrv::pinMode(26, OUTPUT); //define RED LED
+WiFiDrv::pinMode(27, OUTPUT); //define BLUE LED
+
+//Put RGB red while setup
+WiFiDrv::analogWrite(25, 0); //GREEN
+WiFiDrv::analogWrite(26, 255);   //RED
+WiFiDrv::analogWrite(27, 0);   //BLUE
 
 #if LOG == 1
 
@@ -101,14 +116,14 @@ delay(5000);
     int connectingTries = 0;  //Number of times we are trying to connect
 
   // attempt to connect to Wifi network:
-  while (status != WL_CONNECTED && connectingTries != 4) {  //While we are not connected and it isn't our fourth try
+  while (status != WL_CONNECTED && connectingTries != 3) {  //While we are not connected and it isn't our fourth try
     lms("Attempting to connect to SSID: ");
     lmsln(ssid);
 
     // Connect to WPA/WPA2 network. Change this line if using open or WEP network:
     status = WiFi.begin(ssid, pass);
     connectingTries++;
-    delay(5000);  //Give a 5sec delay before the next try
+    //delay(5000);  //Give a 5sec delay before the next try
   }
 
   if (status == WL_CONNECTED) {  //If we are connected to wifi
@@ -116,6 +131,7 @@ delay(5000);
     // you're connected now, so print out the status:
     printWifiStatus();
 
+#if SKIP_MQTT == 0
     // start the WiFi OTA library with internal (flash) based storage
     //ArduinoOTA.begin(WiFi.localIP(), "Arduino", "password", InternalStorage);
 
@@ -125,7 +141,7 @@ delay(5000);
     //Set our MQTT client ID
     mqttClient.setId("T-Case_Controller");
 
-    while (!mqttClient.connect(MQTT_BROKER) && connectingTries != 4) {
+    while (!mqttClient.connect(MQTT_BROKER) && connectingTries != 3) {
       lms("Attempting to connect to MQTT broker ");
       lmsln(MQTT_BROKER);
       connectingTries++; //Increase our number of tries
@@ -148,8 +164,9 @@ delay(5000);
 
     } else
       lmsln("Can't connect to MQTT broker...aborting");
+#endif //end if SKIP_MQTT
   }
-#endif
+#endif //end if SKIP_WIFI
 
 
   //All encoder pins as input pulled up
@@ -157,6 +174,7 @@ delay(5000);
   pinMode(ENCODER_2, INPUT_PULLUP);
   pinMode(ENCODER_3, INPUT_PULLUP);
   pinMode(ENCODER_4, INPUT_PULLUP);
+
 
   //Outputs to relays
   pinMode(RELAY_POSITIVE, OUTPUT);
@@ -166,12 +184,15 @@ delay(5000);
   digitalWrite(RELAY_POSITIVE, HIGH);
   digitalWrite(RELAY_NEGATIVE, HIGH);
 
+/*
   //Start calibrating to make sure we get right values and positions
   lmsln("Calibrating...");
   MQTT_Publish("/Overland_Fummins/T-Case_Controller/Action", "Calibrating...");
   lmsln("Going to 2WD position.");
   MQTT_Publish("/Overland_Fummins/T-Case_Controller/Action", "Going to 2WD position.");
 
+
+  //COMMENT OUT THIS SECTION FOR VERSION THAT CALIBRATES ON STARTUP
   //Start our recursive function
   find2WD();
 
@@ -180,9 +201,127 @@ delay(5000);
   lmsln("-----------------  Setup complete  -----------------");
   MQTT_Publish("/Overland_Fummins/T-Case_Controller/Action", "-----------------  Setup complete  -----------------");
   //*/
+
+  //REPLACE BY THIS BLOCK OF CODE FOR VERSION THAT DOESN'T CALIBRATE ON STARTUP
+  initialRequestedState = getRequestedState(); //This will set both initialState and currentState to our current state.
+
+
+
+  //Push to MQTT
+  switch (initialRequestedState)
+  {
+    case _2WD:
+      //MQTT_Publish("/Overland_Fummins/T-Case_Controller/Initial_dash_switch_position", "2WD");
+      break;
+    
+    case _4HI:
+      //MQTT_Publish("/Overland_Fummins/T-Case_Controller/Initial_dash_switch_position", "4HI");
+      break;
+    
+    case _4LOW:
+      //MQTT_Publish("/Overland_Fummins/T-Case_Controller/Initial_dash_switch_position", "4LOW");
+      break;
+
+    default:
+      //MQTT_Publish("/Overland_Fummins/T-Case_Controller/Initial_dash_switch_position", "IMPOSSIBLE");
+      break;
+  }
+  
+  //Now push the current t-case state to MQTT
+  switch(getRawEncoderValue())
+  {
+    case ENCODER_POS_2WD:
+      //MQTT_Publish("/Overland_Fummins/T-Case_Controller/Current_State", "2WD");
+      currentState = _2WD;
+      //GREEN
+      WiFiDrv::analogWrite(25, 255); //GREEN
+      WiFiDrv::analogWrite(26, 0);   //RED
+      WiFiDrv::analogWrite(27, 0);   //BLUE
+      break;
+    
+    case ENCODER_POS_4HI:
+      //MQTT_Publish("/Overland_Fummins/T-Case_Controller/Current_State", "4HI");
+      currentState = _4HI;
+      //BLUE
+      WiFiDrv::analogWrite(25, 0); //GREEN
+      WiFiDrv::analogWrite(26, 0);   //RED
+      WiFiDrv::analogWrite(27, 255);   //BLUE
+      break;
+
+    case ENCODER_POS_4LO:
+      //MQTT_Publish("/Overland_Fummins/T-Case_Controller/Current_State", "4LOW");
+      currentState = _4LOW;
+      //RED
+      WiFiDrv::analogWrite(25, 0); //GREEN
+      WiFiDrv::analogWrite(26, 255);   //RED
+      WiFiDrv::analogWrite(27, 0);   //BLUE
+      break;
+
+    default:
+      //MQTT_Publish("/Overland_Fummins/T-Case_Controller/Current_State", "IMPOSSIBLE");
+      currentState = IMPOSSIBLE;
+      //PURPLE?
+      WiFiDrv::analogWrite(25, 0); //GREEN
+      WiFiDrv::analogWrite(26, 255);   //RED
+      WiFiDrv::analogWrite(27, 0);   //BLUE
+      break;
+  }
+
+  delay(5000);//Wait 5s to see the result of the initial
+
+
+//Blink RGB led 3 times to show that we completed setup
+  //Turn off
+  WiFiDrv::analogWrite(25, 0); //GREEN
+  WiFiDrv::analogWrite(26, 0);   //RED
+  WiFiDrv::analogWrite(27, 0);   //BLUE
+
+  delay(250);
+
+  //RED
+  //WiFiDrv::analogWrite(25, 0); //GREEN
+  WiFiDrv::analogWrite(26, 255);   //RED
+  //WiFiDrv::analogWrite(27, 0);   //BLUE
+
+  delay(250);
+
+  //Turn off
+  //WiFiDrv::analogWrite(25, 0); //GREEN
+  WiFiDrv::analogWrite(26, 0);   //RED
+  //WiFiDrv::analogWrite(27, 0);   //BLUE
+
+  delay(250);
+
+  //BLUE
+  //WiFiDrv::analogWrite(25, 0); //GREEN
+  //WiFiDrv::analogWrite(26, 0);   //RED
+  WiFiDrv::analogWrite(27, 255);   //BLUE
+
+  delay(250);
+
+  //Turn off
+  //WiFiDrv::analogWrite(25, 0); //GREEN
+  //WiFiDrv::analogWrite(26, 0);   //RED
+  WiFiDrv::analogWrite(27, 0);   //BLUE
+
+  delay(250);
+
+  //GREEN
+  WiFiDrv::analogWrite(25, 255); //GREEN
+  //WiFiDrv::analogWrite(26, 0);   //RED
+  //WiFiDrv::analogWrite(27, 0);   //BLUE
+
+  delay(1000);
+
+  //Turn off
+  WiFiDrv::analogWrite(25, 0); //GREEN
+  //WiFiDrv::analogWrite(26, 0);   //RED
+  //WiFiDrv::analogWrite(27, 0);   //BLUE
+
+  
 }
 
-
+#if SKIP_MQTT == 0
 /******************************************************************
 
    Function: messageReceived()
@@ -206,6 +345,7 @@ void messageReceived(String &topic, String &payload) {
    Description: Publishes message to MQTT topic
 
  *****************************************************************/
+
 void MQTT_Publish(String topic, String payload) {
 
   if (mqttClient.connected())  //Make sure we are connected to the MQTT broker
@@ -216,6 +356,7 @@ void MQTT_Publish(String topic, String payload) {
     mqttClient.endMessage();
   }
 }
+
 
 
 /******************************************************************
@@ -291,7 +432,7 @@ void MQTT_Alarm(String payload) {
     mqttClient.endMessage();
   }
 }
-
+#endif //end f SKIP_MQTT from start of message_received
 
 
 /******************************************************************
@@ -385,6 +526,7 @@ int getRequestedState() {
   lmsln(requestedState);
 #endif
 
+#if SKIP_MQTT == 0
   if (mqttClient.connected())  //Make sure we are connected to the MQTT broker
   {
     if(requestedState == _2WD)
@@ -399,6 +541,7 @@ int getRequestedState() {
     else
       MQTT_Publish("/Overland_Fummins/T-Case_Controller/Requested_State", "IMPOSSIBLE");
   }
+#endif
 
   return requestedState;  // 0 = TRANSITION, 1 = 2WD, 2 = 4HI, 3 = 4LO, 999 = IMPOSSIBLE
 }
@@ -452,9 +595,15 @@ void find2WD() {
 
   //We are at the leftmost ENCODER_POS_2WD position
 
+#if SKIP_MQTT == 0
   //Update current state
   MQTT_Publish("/Overland_Fummins/T-Case_Controller/Current_State", "2WD");
+#endif
+
   currentState = _2WD;
+  WiFiDrv::analogWrite(26, 0);   //RED
+  WiFiDrv::analogWrite(25, 255); //GREEN
+  WiFiDrv::analogWrite(27, 0);   //BLUE
 }
 
 
@@ -502,9 +651,15 @@ void find4LO() {
 
   //We are at the rightmost ENCODER_POS_4LO position
 
+#if SKIP_MQTT == 0
   //Update current state
   MQTT_Publish("/Overland_Fummins/T-Case_Controller/Current_State", "4LO");
+#endif
+
   currentState = _4LOW;
+  WiFiDrv::analogWrite(26, 255);   //RED
+  WiFiDrv::analogWrite(25, 0); //GREEN
+  WiFiDrv::analogWrite(27, 0);   //BLUE
 }
 
 
@@ -532,8 +687,14 @@ void goto4HI() {
     delay(100);
 
     //Update current state
+  #if SKIP_MQTT == 0
     MQTT_Publish("/Overland_Fummins/T-Case_Controller/Current_State", "4HI");
+  #endif
+
     currentState = _4HI;
+    WiFiDrv::analogWrite(26, 0);   //RED
+    WiFiDrv::analogWrite(25, 0); //GREEN
+    WiFiDrv::analogWrite(27, 255);   //BLUE
   }
 
   else if (currentState == _4LOW) {
@@ -556,8 +717,14 @@ void goto4HI() {
     delay(100);
 
     //Update current state
+#if SKIP_MQTT == 0
     MQTT_Publish("/Overland_Fummins/T-Case_Controller/Current_State", "4HI");
+#endif
+
     currentState = _4HI;
+    WiFiDrv::analogWrite(26, 0);   //RED
+    WiFiDrv::analogWrite(25, 0); //GREEN
+    WiFiDrv::analogWrite(27, 255);   //BLUE
   }
 }
 
@@ -572,25 +739,39 @@ void loop() {
 
   // add your normal loop code below ...
 
-  //We have calibrated in setup to get the motor to the 2WD position
+  
 
-  //Start polling the dash switch every 50ms
+  //Start polling the dash switch every sec
 
   requestedState = getRequestedState();  //Check what the dash switch says
 
-  if (requestedState != currentState)  //We need to move motor
+  lms(requestedState);
+  lms(" ");
+  lms(currentState);
+  lms(" ");
+  lms(justBooted);
+  lms(" ");
+  lmsln(initialRequestedState);
+
+  if (((requestedState != currentState) && !justBooted) || (requestedState != initialRequestedState) && justBooted)  //We need to move motor
   {
-    if (requestedState == _2WD)  //We requested 2WD and we are not at 2WD
+    if (requestedState == _2WD) {  //We requested 2WD and we are not at 2WD
+      justBooted = false;
       find2WD();
+    }
 
-    else if (requestedState == _4LOW)  //We requested 4LO and we are not at 4LO
+    else if (requestedState == _4LOW) {  //We requested 4LO and we are not at 4LO
+      justBooted = false;
       find4LO();
+    }
 
-    else if (requestedState == _4HI)  //From 2WD to 4HI
+    else if (requestedState == _4HI) { //From 2WD to 4HI
+      justBooted = false;
       goto4HI();
+    }
   }
 
-  delay(50);  //500ms delay before next poll
+  delay(1000);  //1s delay before next poll
 }
 
 void printWifiStatus() {
