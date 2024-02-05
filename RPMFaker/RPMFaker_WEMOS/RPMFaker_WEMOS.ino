@@ -1,6 +1,8 @@
 /*
   This sketch takes input from the dodge engine speed sensor (crankshaft position sensor) and outputs a PWM signal compatible with the Ford.
 
+  THIS IS FOR A WEMOS D1 MINI
+  
   Arduino UNO will only do Fast PWM on pin D3 or D11.  D11 is toggle only (50% duty cycle) so we have to use D3
 
   Arduino UNO can onl have interrupts on digital pins D2 and D3.  Because we are using D3 for output, we need to use D2 as input from crank sensor
@@ -87,3 +89,14 @@ void processInt()
 
  * 
  */
+
+
+void setup() {
+  // put your setup code here, to run once:
+
+}
+
+void loop() {
+  // put your main code here, to run repeatedly:
+
+}

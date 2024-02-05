@@ -1,28 +1,27 @@
-#include <Servo.h>
-
-#define VALIDATE_WITHOUT_HARDWARE 0 //change this to 1 to use software random number generator instead of actual TPS
-
-#define LOG_DEBUG 1 //Change this for 1 to enable serial monitor debugging
-#if LOG_DEBUG == 1 || VALIDATE_WITHOUT_HARDWARE == 1
-#define debug(x) Serial.print(x)
-#define debugln(x) Serial.println(x)
-#else
-#define debug(x)
-#define debugln(x)
-#endif
-
 /*
 - Sketch: pedalServoDriver
 - Author: Etienne Gignac-Bouchard
-- Data started: 2 Sep 23
-- Last modified: 2 Sep 23
+- Data started: 13 Jan 24
+- Last modified: 13 Jan 24
 - Description: Reads the TPS on the stock fuel pedal and drives the servo motor accordingly
 
 */
 
 
 
+#include <Servo.h>
+#include <ArduinoOTA.h> //OTA
 
+#define VALIDATE_WITHOUT_HARDWARE 0 //change this to 1 to use software random number generator instead of actual TPS
+
+#define LOG_DEBUG 1 //Change this for 1 to enable serial monitor debugging
+#if LOG_DEBUG == 1
+#define debug(x) Serial.print(x)
+#define debugln(x) Serial.println(x)
+#else
+#define debug(x)
+#define debugln(x)
+#endif
 
 /***********************************************
 
@@ -47,21 +46,23 @@ int sMin = 0;         //Min servo position (angle) corresponding to no fuel
               INPUTS
       (PIN)         (Description)
       A0            Analog input from pedal TPS (foot off = 0V).  Has to be able to to analog to digital.
-                    On Arduino UNO, can be A0 to A5
 
+      
 
               OUTPUTS
       (PIN)         (Description)
       3            PWM Output to servo
 
             SERVO PINOUT (TYPICAL)
-      RED
+      RED           
       YELLOW
       BROWN         GROUND
 
+
+
 ************************************************/
-#define pedal A0
-#define sPin 3
+#define PEDAL_PIN A0
+#define SERVO_PIN 3
 
 
 
