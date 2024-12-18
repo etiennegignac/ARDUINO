@@ -1,0 +1,45 @@
+FIRST SKETCH: POSITION SNIFFING
+
+- Make sure truck is running for full voltage and in neutral.
+- Move tcase all the way to 2wd
+- "Start"
+- LOOP: Read pin status
+	- If different than last pin status: output pic status.  last pin status = current position
+- Force past 2wd position
+- Move all the way to 2LOW
+- Should have a complete list of positions
+
+
+
+SECOND SKETCH: TCASE OPERATIONS
+
+STATUS LEDs ON CASE ITSELF AND MAYBE LATER IN HOLLEY DASH
+- Moving at all
+- Moving POSITIVE TRACTION (towards 4LO)
+- Moving NEGATIVE TRACTION (Towards 4HI)
+- Currently 2WD
+- Currently 4HI
+- Currently 4LO
+- Some sort of error?
+
+Maybe use a full blown display?
+
+BOOT
+
+	- Show status: initial setup
+	- Setup pins, timers, etc.
+	- Start 2 second timer to read TCASE encoder
+		- Store current TCASE position
+		- If fail, show status failed read tcase
+	- Start 2 second timer to read dash switch position
+		- Store current dash switch position
+		- If fail, show status failed read dash switch
+	- Show status going to initial position
+	- Compare dash switch and tcase encoder (initial position)
+		- If known position, show status of actual position
+
+	- If unknown position
+		- Show status moving in whichever direction
+		- Wait until we get there, check check check
+		- Stop when we are there
+		- Show status of actual position

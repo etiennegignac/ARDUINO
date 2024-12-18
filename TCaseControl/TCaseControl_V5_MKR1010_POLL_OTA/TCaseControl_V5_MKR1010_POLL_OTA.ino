@@ -9,7 +9,7 @@
 #define LOG 0  //All the verbose in the serial console
 #define DEBUG_REQUESTED_STATE_PINS 0
 #define DEBUG_CURRENT_STATE_PINS 0
-#define DEBUG_RAW_ENCODER 0
+#define DEBUG_RAW_ENCODER 1
 #define SKIP_WIFI 0
 #define SKIP_MQTT 0
 
@@ -260,6 +260,8 @@ WiFiDrv::analogWrite(27, 0);   //BLUE
     default:
       //MQTT_Publish("/Overland_Fummins/T-Case_Controller/Current_State", "IMPOSSIBLE");
       currentState = IMPOSSIBLE;
+      find2WD();
+
       //PURPLE?
       WiFiDrv::analogWrite(25, 0); //GREEN
       WiFiDrv::analogWrite(26, 255);   //RED
@@ -558,7 +560,7 @@ int getRequestedState() {
 
  *****************************************************************/
 void find2WD() {
-  //lms("Looking for 2WD position going negative...");
+  lms("Looking for 2WD position going negative...");
   //MQTT_Info("Looking for 2WD position going negative...");
 
   //Turn motor on going negative
@@ -664,7 +666,7 @@ void find4LO() {
 
 
 void goto4HI() {
-  //lmsln("Going to 4HI");
+  lmsln("Going to 4HI");
   //MQTT_Info("Going to 4HI");
 
   // If we are at 2WD, we need to go positive
